@@ -16,6 +16,9 @@
 (defun vlist-contents (vlist)
   (car (cdr vlist)))
 
+(defun suffix? (vlist) (s-starts-with? "-" (car (vlist-contents vlist))))
+(defun prefix? (vlist) (s-ends-with? "-" (s-trim-right (car (vlist-contents vlist)))))
+
 (defun vlist-contents-pad-to-height (target-height vlist)
   (let ((actual-height (vlist-height vlist))
 	(width (vlist-width vlist))
@@ -24,7 +27,9 @@
 	contents
       (-concat contents (-repeat
 			 (- target-height actual-height)
-			 (s-repeat width "*")))))) 
+			 (cond ((prefix? vlist) (concat     (s-repeat (- width 1) "*") "-"))
+			       ((suffix? vlist) (concat "-" (s-repeat (- width 1) "*")))
+			       (t                           (s-repeat width "*"))))))))
 
 (defun vlist-contents-pad-to-width (target-width vlist)
   (let ((actual-width (vlist-width vlist))
@@ -44,27 +49,24 @@
 		height
 		(apply '-concat (-map (-partial 'vlist-contents-pad-to-width width) xs)))))
 
+(defun space-concat (a b) (s-concat a " " b))
+
+(defun horiz-concat (&rest xs)
+  (-reduce (-partial '-zip-with 'space-concat) xs))
 
 (defun horiz (&rest xs)
   (let ((width (apply '+ (-map 'vlist-width xs)))
 	(height (apply 'max (-map 'vlist-height xs))))
     (make-vlist width
 		height
-		(apply 'h-concat* (-map (-partial 'vlist-contents-pad-to-height height) xs)))))
+		(apply 'horiz-concat (-map (-partial 'vlist-contents-pad-to-height height) xs)))))
 
-
-(defun h-concat (xs ys)
-  (-zip-with 'space-concat xs ys))
-
-(defun h-concat* (&rest xs)
-  (-reduce 'h-concat xs))
 
 (h-concat* '("abc" "def") '("ghi" "jkl") '("mnop" "qrst"))
-(defun horiz* (&rest xs)
-  (-reduce 'horiz xs))
 
+(suffix? (vert (--- "k-") (--- "a-")))
 (vert (--- "katinwiloh")
-       (horiz (vert (--- "k-")
+       (horiz (vert  (--- "k-")
 		     (--- "inc-")
 		     (--- "extra-"))
 	       (vert (--- "at-")
@@ -74,14 +76,8 @@
 	       (vert (--- "il")
 		     (--- "see"))
 	       (vert (--- "-oh")
-		      (--- "-ss")
-		      (--- "-EXTRA!")))
+		      (--- "-ss")))
        (--- "VTIF"))
 
-(horiz (--- "hijk") (--- "abcd") (vert (--- "12") (--- "34")))
-
-				       (defun horiz (a b)
- (vlist-contents (vlist "string")) 
- (vlist-contents-pad-to-height 1 (vert (--- "abc") (--- "defgh")))
-
-(width (atom "string"))
+;; Repeat until done: If any of the initial tokens are prefixes, join them into a (pre ...)
+;; 
