@@ -1,8 +1,8 @@
-(defun --- (s)
-  (list (list (length s) 1) (list s)))
-
 (defun make-vlist (width height contents)
   (list (list width height) contents))
+
+(defun atomic-vlist (s)
+  (make-vlist (length s) 1 (list s)))
 
 (defun empty-vlist (width height)
   (list (list width height) (-repeat height (s-repeat width " "))))
@@ -64,20 +64,19 @@
 
 (h-concat* '("abc" "def") '("ghi" "jkl") '("mnop" "qrst"))
 
-(suffix? (vert (--- "k-") (--- "a-")))
-(vert (--- "katinwiloh")
-       (horiz (vert  (--- "k-")
-		     (--- "inc-")
-		     (--- "extra-"))
-	       (vert (--- "at-")
-		     (--- "b2s-"))
-	       (vert (--- "inw-")
-		     (--- "a1s-"))
-	       (vert (--- "il")
-		     (--- "see"))
-	       (vert (--- "-oh")
-		      (--- "-ss")))
-       (--- "VTIF"))
+(vert (atomic-vlist "katinwiloh")
+       (horiz (vert  (atomic-vlist "k-")
+		     (atomic-vlist "inc-")
+		     (atomic-vlist "extra-"))
+	       (vert (atomic-vlist "at-")
+		     (atomic-vlist "b2s-"))
+	       (vert (atomic-vlist "inw-")
+		     (atomic-vlist "a1s-"))
+	       (vert (atomic-vlist "il")
+		     (atomic-vlist "see"))
+	       (vert (atomic-vlist "-oh")
+		      (atomic-vlist "-ss")))
+       (atomic-vlist "VTIF"))
 
 ;; Repeat until done: If any of the initial tokens are prefixes, join them into a (pre ...)
 ;; 
