@@ -3,6 +3,17 @@
 ;; - How should we handle ambiguous affixes (e.g. <k-at-inw-il-oh> rather than <k- at- inw- il -oh>)?
 ;; - Is there ANYTHING sensible we can do with infixes?
 
+;; BUGS TO FIX:
+
+;; - This does not straighten correctly:
+;;     katinwiloh 
+;;     k- at- inw- il -oh 
+;;     INC- B2s- A1s- see -SS
+;;   This does:
+;;     katinwiloh 
+;;     k= at= inw= il =oh 
+;;     INC= B2s= A1s= see =SS
+
 ;; ROADMAP. At least a blog post's worth of features at each numbered level.
 
 ;; 1. Consolidating current features
@@ -71,6 +82,11 @@
 	(apply 'max (-non-nil list))
       nil)))
 
+(defun pos-to-column (pos)
+  (save-excursion
+    (goto-char pos)
+    (current-column)))
+
 ;; Iterating through a line group
 
 (defmacro restrict-to-group (&rest body)
@@ -115,10 +131,13 @@
 			      (match-end 1)
 			      `(break-level ,level face highlight)))))))
 
-;; Moving by morph breaks
+;; Locating morph breaks on the current line
 
 (defun next-break (level)
-  (pos-to-column (text-property-any (point) (line-end-position) 'break-level level)))
+  (let ((pos (text-property-any (point) (line-end-position) 'break-level level)))
+    (if pos
+	(pos-to-column pos)
+      (pos-to-column (line-end-position)))))
 
 (defun next-breaks-up-to (level)
   (-map 'next-break
@@ -150,19 +169,19 @@
 	     (pad-to-column (+ target-column 2) i)))
       (move-to-column (+ target-column 1)))))
       
-(defun straighten-to-next-break ()
+(defun do-straighten-next-break ()
   (loop for i downfrom 7 above 0
 	until (straighten-one-break i))
   (unless (get-text-property (- (point) 1) 'break-level)
-    (straighten-to-next-break)))
+    (do-straighten-next-break)))
 
-(defun sd (times)
+(defun straighten-next-break (times)
   (interactive "p")
   (decorate-group)
   (loop repeat times do
-	(straighten-to-next-break)))
+	(do-straighten-next-break)))
 
-
+  
 
 (each-line-in-group (line-end-position))
 
@@ -173,9 +192,17 @@
 
 (line-end-position)
 
-;;asdasd= asdf =asdfa0dfas =asdf 
-;;adsf= as -asdfasdf asdfasdfa 
-;;a- asdfa= a -s -s =asdfa 
-;;asdfasdf= asdfasdfasd =asdfadsf 
-;;a- sdf -asdf= asdf -s -d =a- asdfads 
+;;asdasd=         asdf =asdfa0dfas =asdf 
+;;adsf=           as -asdfasdf asdfasdfa 
+;;a-   asdfa=     a -s -s =asdfa 
+;;asdfasdf=       asdfasdfasd =asdfadsf 
+;;a-   sdf -asdf= asdf -s -d =a- asdfads 
 ;;1sg- plu -fuck= this -is -a =test- so 
+
+;;asdasd=         asdf        =asdfa0dfas =asdf 
+;;adsf=           as   -asdfasdf asdfasdfa 
+;;a-   asdfa=     a           =
+
+
+
+
