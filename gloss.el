@@ -6,15 +6,6 @@
 ;; ROADMAP. At least a blog post's worth of features at each numbered level.
 
 ;; 1. Consolidating current features
-;; - Fixes to (sd)
-;; - - Handle straightening at the end of a line. This will sometimes
-;; - -   have to include the insertion of new morph-breaks on some
-;; - -   lines, and will also have to include a sensible behavior when
-;; - -   we get to the end of a line. (Jump to start of next group?)
-;; - - Give a better name
-;; - - Interact correctly with the universal prefix
-;; - Refactor each-line-in-group to use restrict-to-group
-;; - Possibly get rid of by-cell and by-group movement commands if they are no longer relevant --- we will reimpliment this better in 4
 ;; - Handle decoration correctly in the following situation:
 ;;       k-   at- inw- il  -oh
 ;;       INC-          see -VTIF
@@ -22,6 +13,7 @@
 
 ;; 2. Basic new features required for next steps
 ;; - Recognize when we are in glosstext
+;; - Correctly jump to the same line in a new group
 ;; - Line wrapping and carriage returns
 ;; - Handle line prefixes \ft etc. (one possibility: use display-margins?)
 ;; - Recognize lines which should not be aligned (and alter restrict-to-group to ignore them?)
@@ -73,85 +65,13 @@
   (interactive)
   (message "%s" (text-properties-at (point))))
 
-(defun blank? ()
-  (or (s-equals? (thing-at-point 'line) "")
-      (s-equals? (thing-at-point 'line) "\n")))
-
 (defun max-non-nil (list)
   (let ((list* (-non-nil list)))
     (if list* 
 	(apply 'max (-non-nil list))
       nil)))
 
-(defun pos-to-column (pos)
-  (if pos
-      (save-excursion (goto-char pos) (current-column))
-    (line-end-column)))
-
-(defun line-end-column ()
-  (pos-to-column (line-end-position)))
-
-;; Horizontal movement by cell
-
-(defun beginning-of-cell ()
-  (interactive)
-  (beginning-of-thing 'word))
-
-(defun cell-beginning-position ()
-  (save-excursion
-    (beginning-of-cell)
-    (current-column)))
-
-(defun end-of-cell ()
-  (interactive)
-  (end-of-thing 'word)
-  (cond ((= 0 (current-column))
-	 (forward-line -1)
-	 (end-of-line)
-	 (current-column))
-	(t
-	 (search-forward-regexp "[[:space:]]*")
-	 (forward-char -1)
-	 (current-column))))
-
-(defun cell-end-position ()
-  (save-excursion
-    (end-of-cell)
-    (current-column)))
-
-;; Vertical movement by line group
-
-(defun beginning-of-group ()
-  ;;; TODO
-  )
-
-(defun group-beginning-line ()
-  ;;; TODO
-  )
-
-(defun end-of-group ()
-  (interactive)
-  (forward-paragraph)
-  (if (blank?)
-      (forward-line -1)))
-
-(defun group-end-line ()
-  ;;; TODO
-  )
-
 ;; Iterating through a line group
-
-;;; TODO: refactor this in the same terms as restrict-to-group.
-(defmacro each-line-in-group (f)
-  `(save-excursion
-     (let ((column (current-column)))
-       (end-of-group) ;; We work through the group backwards so that accumulator ends up in an intuitive order.
-       (setq accumulator '())
-       (while (not (blank?))
-	 (move-to-column column)
-	 (setq accumulator (cons ,f accumulator))
-	 (forward-line -1))
-     accumulator)))
 
 (defmacro restrict-to-group (&rest body)
   `(save-excursion
@@ -161,6 +81,17 @@
 	 (backward-paragraph)
 	 (narrow-to-region (point) end)
 	 (progn ,@body)))))
+
+(defmacro each-line-in-group (&rest body)
+  `(let ((column (current-column))
+	 (accumulator '())
+	 (more-lines t))
+     (restrict-to-group
+      (while more-lines
+	(move-to-column column)
+	(setq accumulator (cons (progn ,@body) accumulator))
+	(setq more-lines (= 0 (forward-line 1)))))
+     accumulator))
 
 ;; Decorating morph breaks
 
@@ -209,28 +140,42 @@
 	(move-to-column actual-breakpoint)
 	(insert-char ? (- target-breakpoint actual-breakpoint))))))
 
-(defun straighten (level)
+(defun straighten-one-break (level)
   (let ((target-column (max-non-nil
 			 (each-line-in-group (next-break-if-accessible level)))))
     (when target-column
-      (each-line-in-group (progn
-			    (pad-to-column target-column level)
-			    (loop for i from 1 below level do
-				  (pad-to-column (+ target-column 2) i))))
+      (each-line-in-group
+       (pad-to-column target-column level)
+       (loop for i from 1 below level do
+	     (pad-to-column (+ target-column 2) i)))
       (move-to-column (+ target-column 1)))))
       
-(defun sd ()
-  (interactive)
-  (decorate-group)
+(defun straighten-to-next-break ()
   (loop for i downfrom 7 above 0
-	until (straighten i))
+	until (straighten-one-break i))
   (unless (get-text-property (- (point) 1) 'break-level)
-    (sd)))
+    (straighten-to-next-break)))
+
+(defun sd (times)
+  (interactive "p")
+  (decorate-group)
+  (loop repeat times do
+	(straighten-to-next-break)))
 
 
-;;asdasd=  asdf =asdfadfas
-;;adsf=  as -asdfasdf =asdfasdfa 
-;;a- asdfa= a  -s -s =asdfa
-;;asdfasdf=  asdfasdfasd =asdfadsf
-;;a-  sdf -asdf= asdf -s -d =a-  asdfads
-;;1sg- plu -fuck= this -is -a =test- so
+
+(each-line-in-group (line-end-position))
+
+
+;;adf= asdf
+;;asdf= a -s -d -f -g -h-
+;;aassdf= a -ss -dd -ff -gg -hh-
+
+(line-end-position)
+
+;;asdasd= asdf =asdfa0dfas =asdf 
+;;adsf= as -asdfasdf asdfasdfa 
+;;a- asdfa= a -s -s =asdfa 
+;;asdfasdf= asdfasdfasd =asdfadsf 
+;;a- sdf -asdf= asdf -s -d =a- asdfads 
+;;1sg- plu -fuck= this -is -a =test- so 
