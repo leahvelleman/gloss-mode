@@ -5,22 +5,35 @@
 
 ;; BUGS TO FIX:
 
-;; - This does not straighten correctly:
-;;     katinwiloh 
-;;     k- at- inw- il -oh 
-;;     INC- B2s- A1s- see -SS
-;;   This does:
-;;     katinwiloh 
-;;     k= at= inw= il =oh 
-;;     INC= B2s= A1s= see =SS
+;; space-pad-group also space-pads the blank line following the group
+;; (and does this repeatedly, even once that line already ends in a
+;; space --- possibly because the inserted spaces are after point-max?)
+
 
 ;; ROADMAP. At least a blog post's worth of features at each numbered level.
 
-;; 1. Consolidating current features
-;; - Handle decoration correctly in the following situation:
-;;       k-   at- inw- il  -oh
-;;       INC-          see -VTIF
-;; - UNIT TESTING: Test features both in and out of evil-mode
+;; 1. Refactoring!
+;(hyphen
+; (cond
+;  ((we just inserted a space) (insert a suffix break))
+;  ((there is a parallel prefix break) (insert a prefix break))
+;  ((there is a parallel suffix break) (insert a suffix break))
+;  ((there are preceding suffix breaks on current line) (insert a suffix break))
+;  (t (insert a prefix break)))
+; (forward-cell -1) ;; puts us in the cell before the break regardless of which kind of break we inserted
+; (straighten-current-cell)) ;; puts us back after the break again
+
+;; Rules:
+;; -- Space-hyphen will always give you a suffix
+;; -- Otherwise it tries to guess what you meant, erring on the side of prefix if it's not sure
+;; -- To change, use C--
+
+;; C-- : turn a preceding, accessible prefix boundary to a suffix boundary and vice versa
+;; C-= : likewise
+;; C-+ : likewise
+
+
+
 
 ;; 2. Basic new features required for next steps
 ;; - Recognize when we are in glosstext
@@ -54,7 +67,7 @@
 ;; - Interface:
 ;; - - "Fill in this cell" vs. "Fill in this slot all the way down"?
 ;; - - 
-
+ 
 
 ;; A thought:
 ;; 
@@ -69,6 +82,7 @@
 (require 's)
 (require 'dash)
 (require 'cl)
+(require 'thingatpt)
 
 ;; Helper functions
 
@@ -87,12 +101,53 @@
     (goto-char pos)
     (current-column)))
 
+;; Cells are delimited by morph breaks
+
+(setq cell-breaks
+      ["[^-=+ ] *\\( \\)[^-=+ ]"   ; last space in a group that is not delimited on either side by any other boundary char
+       "= *\\( \\)[^ ]"    ; last space in a group after a equals 
+       " *\\( \\)="    ; last space in a group before an equals
+       "- *\\( \\)[^ ]"    ; last space in a group after a hyphen 
+       " *\\( \\)-"])  ; last space in a group before a hyphen
+
+(setq cell-end " *\\( \\)[^ ]")
+
+(defun forward-cell (&optional arg)
+  (interactive "p")
+  (or arg (setq arg 1))
+  (while (< arg 0)
+    (let ((pos (point))
+	  (par-beg (line-beginning-position)))
+      (if (and (re-search-backward cell-end par-beg t)
+	       (or (< (match-end 1) pos)
+		   (re-search-backward cell-end par-beg t)))
+	  (goto-char (match-end 1))
+	(goto-char par-beg)))
+    (setq arg (1+ arg)))
+  (while (> arg 0)
+    (let ((par-end (line-end-position)))
+      (if (re-search-forward cell-end par-end t)
+	  (progn
+	    (goto-char (match-beginning 1))
+	    (forward-char))
+	(goto-char par-end)))
+    (setq arg (- arg 1))))
+
+
+(defun beginning-of-cell ()
+  (interactive)
+  (beginning-of-thing 'cell))
+
+(defun end-of-cell ()
+  (interactive)
+  (end-of-thing 'cell))
+
 ;; Iterating through a line group
 
 (defmacro restrict-to-group (&rest body)
   `(save-excursion
      (save-restriction
-       (forward-paragraph)
+       (end-of-paragraph-text)
        (let ((end (point)))
 	 (backward-paragraph)
 	 (narrow-to-region (point) end)
@@ -106,37 +161,15 @@
       (while more-lines
 	(move-to-column column)
 	(setq accumulator (cons (progn ,@body) accumulator))
-	(setq more-lines (= 0 (forward-line 1)))))
+	(setq more-lines (progn (forward-line) (= (point) (line-beginning-position))))))
      accumulator))
-
-;; Decorating morph breaks
-
-(setq levels '(("[^-=+ ] *\\( \\)[^-=+ ]" 1)   ; last space in a group that is not
-	                         ; delimited on either side by any other boundary char
-	       ("+ *\\( \\)" 2)  ; last space in a group after a plus 
-	       (" +\\(+\\)" 3)   ; plus after a group of spaces
-	       ("= *\\( \\)" 4)  ; last space in a group after a equals 
-	       (" +\\(=\\)" 5)   ; equals after a group of spaces
-	       ("- *\\( \\)" 6)  ; last space in a group after a hyphen 
-	       (" +\\(-\\)" 7))) ; hyphen after a group of spaces
-
-(defun decorate-group ()
-  (interactive)
-  (dolist (l levels)
-    (let ((regex (car l))
-	  (level (cadr l)))
-      (restrict-to-group
-       (while (re-search-forward regex nil t)
-	 (add-text-properties (match-beginning 1)
-			      (match-end 1)
-			      `(break-level ,level face highlight)))))))
 
 ;; Locating morph breaks on the current line
 
 (defun next-break (level)
-  (let ((pos (text-property-any (point) (line-end-position) 'break-level level)))
-    (if pos
-	(pos-to-column pos)
+  (save-excursion
+    (if (re-search-forward (aref cell-breaks level) (line-end-position) t)
+	(- (pos-to-column (point)) 1)
       (pos-to-column (line-end-position)))))
 
 (defun next-breaks-up-to (level)
@@ -150,6 +183,14 @@
 	candidate
       nil)))
 
+;; TODO: REFACTOR
+(defun accessible-break-in-group? (level)
+  (save-excursion
+    (beginning-of-cell)
+    (-non-nil
+     (each-line-in-group
+      (next-break-if-accessible level)))))
+  
 ;; Straightening morph breaks
 
 (defun pad-to-column (target-breakpoint level)
@@ -159,49 +200,37 @@
 	(move-to-column actual-breakpoint)
 	(insert-char ? (- target-breakpoint actual-breakpoint))))))
 
-(defun straighten-one-break (level)
-  (let ((target-column (max-non-nil
-			 (each-line-in-group (next-break-if-accessible level)))))
-    (when target-column
-      (each-line-in-group
+(defun straighten-one-break (&optional level)      
+  (interactive "P")                                
+  (or level (setq level 0))
+  (let ((target-column (max-non-nil                
+			(each-line-in-group        
+			 (beginning-of-cell)       
+			 (next-break-if-accessible level)))))
+    (when target-column                            
+      (each-line-in-group                          
+       (beginning-of-cell)
        (pad-to-column target-column level)
-       (loop for i from 1 below level do
+       (loop for i from 0 below level do
 	     (pad-to-column (+ target-column 2) i)))
-      (move-to-column (+ target-column 1)))))
+      (move-to-column target-column))))
       
-(defun do-straighten-next-break ()
-  (loop for i downfrom 7 above 0
-	until (straighten-one-break i))
-  (unless (get-text-property (- (point) 1) 'break-level)
-    (do-straighten-next-break)))
-
-(defun straighten-next-break (times)
+(defun straighten-cell (times)
   (interactive "p")
-  (decorate-group)
-  (loop repeat times do
-	(do-straighten-next-break)))
+  (labels ((straighten-more ()
+	      (loop for i downfrom 4 to 0
+		       until (straighten-one-break i))
+	      (unless (and (looking-at "[^ ]")
+			   (looking-back " "))
+		(straighten-more))))
+    (beginning-of-cell)
+    (loop repeat times do
+	  (straighten-more))))
 
-  
-
-(each-line-in-group (line-end-position))
-
-
-;;adf= asdf
-;;asdf= a -s -d -f -g -h-
-;;aassdf= a -ss -dd -ff -gg -hh-
-
-(line-end-position)
-
-;;asdasd=         asdf =asdfa0dfas =asdf 
-;;adsf=           as -asdfasdf asdfasdfa 
-;;a-   asdfa=     a -s -s =asdfa 
-;;asdfasdf=       asdfasdfasd =asdfadsf 
-;;a-   sdf -asdf= asdf -s -d =a- asdfads 
-;;1sg- plu -fuck= this -is -a =test- so 
-
-;;asdasd=         asdf        =asdfa0dfas =asdf 
-;;adsf=           as   -asdfasdf asdfasdfa 
-;;a-   asdfa=     a           =
+(define-minor-mode gloss-mode
+  "Foo"
+  :init-value nil
+  :lighter " Gloss")
 
 
 
