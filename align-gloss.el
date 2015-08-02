@@ -66,7 +66,7 @@
 		    (enclitic-boundary  . "\\b\\(\\s-*\\)=\\b") 
 		    (word-boundary      . "\\b\\(\\s-+\\)\\b")))
 	(example-number
-	 (regexp   . "^\\(?:([0-9]+)\\s-\\)?\\(\\s-*\\)")
+	 (regexp   . "^;*\\s-*\\(?:([0-9]+)\\s-\\)?\\(\\s-*\\)")
 	 (tab-stop . nil)
 	 (spacing  . 0)
 	 (repeat   . nil))
@@ -110,13 +110,16 @@
 ;;; align-gloss.el ends here
 
 
-(1) katinwiloh
-    k-   at-  inw- il  -oh
-    inc- b2s- a1s- see -ss
-    "asd- fasdasdfasdfasdff"
-\ex\begingl
-\gla katinwiloh		    ri	jun  //
-\glb k-	  at-  inw- il	-oh ri	jun  //
-\glb inc- b2s- a1s- see -ss asd asdf //
-\glft asdfasdf asdf asdf //
-\endgl
+;;; TEST CASES
+
+;;    katinwiloh
+;;    k-	 at-  inw- il  -oh
+;;    inc- b2s- a1s- see -ss
+;;    "asd- fasdasdfasdfasdff"
+
+;; \ex\begingl
+;; \gla katinwiloh	       ri  jun	//
+;; \glb k-   at-  inw- il  -oh ri  jun	//
+;; \glb inc- b2s- a1s- see -ss asd asdf //
+;; \glft aasdfadsdfasdf asdf asdf //
+;; \endgl
