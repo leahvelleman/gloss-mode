@@ -1,23 +1,6 @@
 ;;; align-gloss.el --- Align interlinear glossed text.
 
-;;; Pre-release TODO:
-
-;; Turn the list of alignment rules into a parameter.
-
-;; Handle line-begin and line-end sequences:
-;;   SIL codes (\ft etc)
-;;   Plain text example numbers 
-;;   \ex \gla \glb \glft
-;;   Line-end markers like // in expex
-;;   Line-initial comment characters? (e.g. ;; here...)
-
-;; More thorough list of ignore-line indicators:
-;;   SIL codes (\ref etc)
-;;   \glft
-
-;; Turn the above into parameters?
-
-;; Put in a proper provide statement.
+;;; TODO:
 
 ;; Handle aligning large regions in which there are multiple
 ;; independent gloss groups.
@@ -34,23 +17,14 @@
 ;; Keywords: linguistics, gloss, interlinear, align
 ;; Created: 1 August 2015
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
 ;;; Commentary:
-
-;; These functions handle the alignment of interlinear glosses,
-;; commonly used in linguistics to indicate the structure of example
-;; sentences like this one:
 ;;
-;;    "Jas kawaaj kab'anoh?"
-;;    jas  kaw=      aaj      ka=       b'anoh
-;;    jas  k-   aw=  a    -aj k-   a=   b'an -oh
-;;    what INC- A2s= want -SS INC- A2s= do   -SS
-;;    "What do you want to do?"
-;;
-;;
-;; One user-facing command is provided:
+;; These functions handle the alignment of interlinear glosses.  One
+;; user-facing command is provided:
 ;;
 ;;    M-x align-gloss    Align glossed text within the region.
-;;
 ;;
 ;; It is assumed that glosses follow certain conventions:
 ;;
@@ -68,20 +42,22 @@
 ;;   - Full lines of material that should be left un-aligned (such as
 ;;     a free translation) are surrounded by double quotation marks.
 ;;
-;; These assumptions will hopefully be loosened in future versions.
-;;
 ;; No assumptions are made about the number of levels of glossing provided,
 ;; or about what sort of detail is provided on what level.
 
 ;;; Code:
 
+
 (require 'align)
+
+
 
 ;; Setting up alignment rules
 
-(defun agl/make-gloss-alignment-rule (pair)
-  "Set up an alignment rule. Takes a pair consisting of a rule name and a 
-   regular expression, returns a full rule statement."
+(defun agl/make-morph-break-rule (pair)
+  "Set up an alignment rule for a morpheme break. Takes a pair
+   consisting of a rule name and a regular expression, returns a full
+   rule statement."
   (let ((rule-name (car pair))
         (rule-regexp (cdr pair)))
     `(,rule-name
@@ -91,40 +67,46 @@
                       (save-excursion
                         (goto-char (match-beginning 1))
                         (beginning-of-line)
-                        (not (looking-at "\"")))))
+                        (not (looking-at "\\(\\s-*\"\\|\\s-*\\\\glft\\)")))))
        (repeat   .  1))))
 
 (setq agl/alignment-rules
-      (mapcar 'agl/make-gloss-alignment-rule
-              '((prefix-boundary    . "\\b-\\(\\s-*\\)\\b")
-                (suffix-boundary    . "\\b\\(\\s-*\\)-\\b")
-                (proclitic-boundary . "\\b=\\(\\s-*\\)\\b")
-                (enclitic-boundary  . "\\b\\(\\s-*\\)=\\b") 
-                (word-boundary      . "\\b\\(\\s-+\\)\\b"))))
+      `(,@(mapcar 'agl/make-morph-break-rule
+		  '((prefix-boundary    . "\\b-\\(\\s-*\\)\\b")
+		    (suffix-boundary    . "\\b\\(\\s-*\\)-\\b")
+		    (proclitic-boundary . "\\b=\\(\\s-*\\)\\b")
+		    (enclitic-boundary  . "\\b\\(\\s-*\\)=\\b") 
+		    (word-boundary      . "\\b\\(\\s-+\\)\\b")))
+	(example-number
+	 (regexp   . "^\\(?:([0-9]+)\\s-\\)?\\(\\s-*\\)")
+	 (tab-stop . nil)
+	 (spacing  . 0)
+	 (repeat   . nil))
+	(expex-suffix
+	 (regexp   . "\\(\\s-*\\)//")
+	 (tab-stop . nil)
+	 (spacing  . 1)
+	 (repeat   . nil))
+		 
+	))
 
 ;; Aligning glossed text
 
 (defun agl/align-gloss (start end)
-  "Align interlinear glossed text within the region (or in lines
-  partly contained within the region)."
-  (interactive "r")
-  (agl/buffer-fixed-point
-   (agl/try-align-gloss start end)))
-
-(defun agl/try-align-gloss (start0 end0)
-  "Apply all of the alignment rules for interlinear glossed text
-  exactly once to the region (or lines partly contained within it)."
+  "Align interlinear glossed text within the region."
   (interactive "r")
   (save-excursion
-    (let ((start (progn
-		   (goto-char start0)
-		   (beginning-of-line)
-		   (point)))
-	  (end (progn
-		 (goto-char end0)
-		 (end-of-line)
-		 (point))))
-    (align-region start end nil agl/alignment-rules nil))))
+    (let ((start-marker (copy-marker start nil))
+          (end-marker   (copy-marker end   t)))
+      (agl/buffer-fixed-point (agl/try-align-gloss start-marker end-marker))
+      (set-marker start-marker nil)
+      (set-marker end-marker nil))))
+
+(defun agl/try-align-gloss (start end)
+  "Apply all of the alignment rules for interlinear glossed text
+  exactly once to the region."
+  (interactive "r")
+    (align-region start end nil agl/alignment-rules nil))
 
 (defmacro agl/buffer-fixed-point (&rest body)
   "Repeat a series of commands until they no longer have any
@@ -136,3 +118,16 @@
      (do (buffer-chars-modified-tick))))
 	   
 ;;; align-gloss.el ends here
+
+
+(1) katinwiloh
+ k- at- inw- il -oh
+ INC- B2s- A1s- see -SS
+ "asd- fasdasdfasdfasdff"
+ 
+\ex\begingl
+\gla katinwiloh		    ri  jun  //
+\glb k-   at-  inw- il  -oh ri  jun  //
+\glb INC- B2s- A1s- see -SS asd asdf //
+\glft asdfasdf asdf asdf	     //
+\endgl
