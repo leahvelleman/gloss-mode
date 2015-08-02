@@ -1,17 +1,5 @@
 ;;; align-gloss.el --- Align interlinear glossed text.
 
-;;; TODO:
-
-;; Handle aligning large regions in which there are multiple
-;; independent gloss groups.
-
-;; If no region is given, align the gloss group that the point is currently in.
-
-
-
-
-
-
 ;; Author: Leah Grace Velleman <leah.velleman@gmail.com>
 ;; Version: 0.1
 ;; Keywords: linguistics, gloss, interlinear, align
@@ -50,8 +38,6 @@
 
 (require 'align)
 
-
-
 ;; Setting up alignment rules
 
 (defun agl/make-morph-break-rule (pair)
@@ -63,11 +49,13 @@
     `(,rule-name
        (regexp   . ,rule-regexp) 
        (tab-stop .  nil)
-       (valid    .  (lambda ()
-                      (save-excursion
-                        (goto-char (match-beginning 1))
-                        (beginning-of-line)
-                        (not (looking-at "\\(\\s-*\"\\|\\s-*\\\\glft\\)")))))
+;; This was formerly used to tell the aligner what to ignore. Including these in the
+;; separator regexp SEEMS to have the same effect, making this redundant.
+;       (valid    .  (lambda ()
+;                      (save-excursion
+;                        (goto-char (match-beginning 1))
+;                        (beginning-of-line)
+;                        (not (looking-at "\\(\\s-*\"\\|\\s-*\\\\glft\\)")))))
        (repeat   .  1))))
 
 (setq agl/alignment-rules
@@ -90,6 +78,8 @@
 		 
 	))
 
+(setq agl/separator-regexp "^\\s-*$\\|\\s-*\"\\|\\s-*\\\\glft")
+
 ;; Aligning glossed text
 
 (defun agl/align-gloss (start end)
@@ -106,7 +96,7 @@
   "Apply all of the alignment rules for interlinear glossed text
   exactly once to the region."
   (interactive "r")
-    (align-region start end nil agl/alignment-rules nil))
+    (align-region start end agl/separator-regexp agl/alignment-rules nil))
 
 (defmacro agl/buffer-fixed-point (&rest body)
   "Repeat a series of commands until they no longer have any
@@ -121,13 +111,12 @@
 
 
 (1) katinwiloh
- k- at- inw- il -oh
- INC- B2s- A1s- see -SS
- "asd- fasdasdfasdfasdff"
- 
+    k-   at-  inw- il  -oh
+    inc- b2s- a1s- see -ss
+    "asd- fasdasdfasdfasdff"
 \ex\begingl
-\gla katinwiloh		    ri  jun  //
-\glb k-   at-  inw- il  -oh ri  jun  //
-\glb INC- B2s- A1s- see -SS asd asdf //
-\glft asdfasdf asdf asdf	     //
+\gla katinwiloh		    ri	jun  //
+\glb k-	  at-  inw- il	-oh ri	jun  //
+\glb inc- b2s- a1s- see -ss asd asdf //
+\glft asdfasdf asdf asdf //
 \endgl
